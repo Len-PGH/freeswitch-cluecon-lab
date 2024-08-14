@@ -1,5 +1,10 @@
+# docker-compose build
+# docker-compose up -d
+# docker exec -it freeswitch-community /bin/bash
+
+
 # vim:set ft=dockerfile:
-FROM debian:buster
+FROM debian:bookworm-slim
 
 ARG SIGNALWIRE_TOKEN
 
@@ -8,7 +13,6 @@ ARG SIGNALWIRE_TOKEN
 
 # explicitly set user/group IDs
 RUN groupadd -r freeswitch --gid=999 && useradd -r -g freeswitch --uid=999 freeswitch
-
 
 # make the "en_US.UTF-8" locale so freeswitch will be utf-8 enabled by default
 RUN apt-get update && apt-get install -y locales wget && rm -rf /var/lib/apt/lists/* \
@@ -24,11 +28,14 @@ RUN apt-get update && apt-get install -y gosu curl gnupg2 wget lsb-release apt-t
 RUN cat /etc/apt/sources.list.d/freeswitch.list
 
 RUN apt-get update && apt-get install -y freeswitch-meta-all
-RUN apt-get update && apt-get install -y dnsutils \
+RUN apt-get install -y nano
+RUN apt-get update && apt-get install -y dnsutils mrtg mrtg-ping-probe traceroute net-tools sngrep \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Clean up
 RUN apt-get autoremove
+
+
 
 ## Ports
 # Open the container up to the world.
@@ -43,20 +50,32 @@ EXPOSE 5070/udp 5070/tcp
 EXPOSE 64535-65535/udp
 EXPOSE 16384-32768/udp
 
+# Install bash-completion
+RUN apt-get update && apt-get install -y bash-completion iputils-ping
+
 # Limits Configuration
 COPY build/freeswitch.limits.conf /etc/security/limits.d/
 
-COPY build/docker-entrypoint.sh /
+# Copy the entrypoint script into the container
+# Install dos2unix
+RUN apt-get update && apt-get install -y dos2unix
+
+
+COPY build/docker-entrypoint.sh /docker-entrypoint.sh
+RUN dos2unix /docker-entrypoint.sh
+
+# Make the entrypoint script executable
+RUN chmod +x /docker-entrypoint.sh
 
 # Healthcheck to make sure the service is running
-SHELL       ["/bin/bash"]
+SHELL ["/bin/bash"]
 HEALTHCHECK --interval=15s --timeout=5s \
-    CMD  fs_cli -x status | grep -q ^UP || exit 1
+    CMD fs_cli -x status | grep -q ^UP || exit 1
 
 ## Add additional things here
 
-##
-
+# Set the entrypoint
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-CMD ["freeswitch"]
+# Default command
+CMD ["freeswitch", "-nonatmap", "-nonat"]
